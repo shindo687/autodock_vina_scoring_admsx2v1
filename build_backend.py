@@ -9,7 +9,7 @@ import pathlib
 import zipfile
 
 NAME = "vina_ad"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DIST_INFO = f"{NAME}-{VERSION}.dist-info"
 ROOT = pathlib.Path(__file__).parent
 

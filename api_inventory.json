@@ -12,22 +12,22 @@
   "sidecar_api": {
     "vina_ad.score_coordinates": {
       "status": "implemented",
-      "reason": "faithful restricted SF_VINA pair replay; full Vina.score remains deferred",
-      "primal": "restricted SF_VINA pair energy for (N,3) coordinates, XS atom types, fixed pairs and torsion count",
+      "reason": "explicit vina, vinardo and ad4 source-level pair replay with full term recombination",
+      "primal": "family-selected coordinate pair energy with fixed topology; maps can be supplied through recombine_terms",
       "differentiable_inputs": ["coordinates", "weights"],
-      "fixed_inputs": ["atom_types", "pairs", "torsion_count"],
+      "fixed_inputs": ["sf_name", "atom_types", "pairs", "charges", "torsion_count"],
       "derivative_interface": "JVP/VJP/grad/value_and_grad via ChainRules 0.1.0",
       "interfaces": ["jvp", "vjp", "grad", "value_and_grad"],
-      "math_convention": "real-linear; 20 A max cutoff; source potential knots and coincident points are non-differentiable",
-      "dependency_chain": "score_coordinates -> _pair_linearisation -> SF_VINA six potentials + num_tors_div",
-      "oracle": "tests/test_score.py::test_source_formula_oracle and tests/test_score.py::test_real_vina_binding_oracle",
-      "decision": "implemented restricted subset; full Vina.score deferred"
+      "math_convention": "real-linear; family cutoffs, caps, source potential knots and coincident points are non-differentiable",
+      "dependency_chain": "score_coordinates -> family potentials -> weighted recombination -> torsion correction",
+      "oracle": "tests/test_score.py and tests/test_full_surface.py source transcriptions, finite differences and term consistency",
+      "decision": "implemented coordinate/pair and precomputed-term surface; maps/search remain outside scope"
     },
     "vina_ad.score": {
       "status": "implemented_alias",
-      "reason": "alias of the restricted SF_VINA replay",
+      "reason": "alias of the family-selected score_coordinates replay",
       "alias_of": "vina_ad.score_coordinates",
-      "primal": "same restricted SF_VINA pair energy",
+      "primal": "same family-selected pair energy",
       "differentiable_inputs": ["coordinates", "weights"],
       "fixed_inputs": ["atom_types", "pairs", "torsion_count"],
       "derivative_interface": "same registered rules as score_coordinates",
@@ -38,9 +38,9 @@
     },
     "vina_ad.energy": {
       "status": "implemented_alias",
-      "reason": "alias of the restricted SF_VINA replay",
+      "reason": "alias of the family-selected score_coordinates replay",
       "alias_of": "vina_ad.score_coordinates",
-      "primal": "same restricted SF_VINA pair energy",
+      "primal": "same family-selected pair energy",
       "differentiable_inputs": ["coordinates", "weights"],
       "fixed_inputs": ["atom_types", "pairs", "torsion_count"],
       "derivative_interface": "same registered rules as score_coordinates",
@@ -48,6 +48,73 @@
       "dependency_chain": "alias -> score_coordinates",
       "oracle": "tests/test_score.py::test_source_formula_oracle",
       "decision": "implemented alias"
+    },
+    "vina_ad.score_family": {
+      "status": "implemented_alias",
+      "reason": "explicitly named alias for the sf_name-aware score surface",
+      "alias_of": "vina_ad.score_coordinates",
+      "primal": "same family-selected pair energy",
+      "differentiable_inputs": ["coordinates", "weights"],
+      "fixed_inputs": ["sf_name", "atom_types", "pairs", "charges", "torsion_count"],
+      "derivative_interface": "same registered rules as score_coordinates",
+      "dependency_chain": "alias -> score_coordinates",
+      "oracle": "tests/test_full_surface.py",
+      "decision": "implemented alias"
+    },
+    "vina_ad.potential_terms": {
+      "status": "implemented",
+      "reason": "public unweighted per-potential decomposition",
+      "primal": "six Vina or five Vinardo/AD4 source potential sums over fixed pairs",
+      "differentiable_inputs": ["coordinates"],
+      "fixed_inputs": ["sf_name", "atom_types", "pairs", "charges"],
+      "derivative_interface": "coordinate JVP/VJP",
+      "dependency_chain": "potential_terms -> family potentials",
+      "oracle": "tests/test_full_surface.py",
+      "decision": "implemented"
+    },
+    "vina_ad.score_terms": {
+      "status": "implemented",
+      "reason": "public weighted per-term contribution vector",
+      "primal": "one contribution per family weight; vector sum equals composed score",
+      "differentiable_inputs": ["coordinates", "weights"],
+      "fixed_inputs": ["sf_name", "atom_types", "pairs", "charges", "torsion_count"],
+      "derivative_interface": "JVP/VJP",
+      "dependency_chain": "score_terms -> potential_terms -> recombine",
+      "oracle": "tests/test_full_surface.py term consistency and duality",
+      "decision": "implemented"
+    },
+    "vina_ad.recombine_terms": {
+      "status": "implemented",
+      "reason": "complete weighted accumulation over precomputed interactions",
+      "primal": "source ScoringFunction recombination for six Vina or five Vinardo/AD4 potential sums",
+      "differentiable_inputs": ["terms", "weights"],
+      "fixed_inputs": ["sf_name", "torsion_count"],
+      "derivative_interface": "JVP/VJP",
+      "dependency_chain": "recombine_terms -> weighted potential sum -> conf-independent torsion",
+      "oracle": "tests/test_full_surface.py finite-difference recombination",
+      "decision": "implemented"
+    },
+    "vina_ad.term_values": {
+      "status": "implemented",
+      "reason": "raw feature vector for calibration and regression",
+      "primal": "potential sums plus fixed torsion count",
+      "differentiable_inputs": ["coordinates"],
+      "fixed_inputs": ["sf_name", "atom_types", "pairs", "charges", "torsion_count"],
+      "derivative_interface": "coordinate JVP/VJP",
+      "dependency_chain": "term_values -> potential_terms",
+      "oracle": "tests/test_full_surface.py",
+      "decision": "implemented"
+    },
+    "vina_ad.ScoringFunction": {
+      "status": "implemented_facade",
+      "reason": "mirrors upstream family selection and set_weights state API",
+      "primal": "pure Python facade over score_coordinates and score_terms",
+      "differentiable_inputs": [],
+      "fixed_inputs": ["sf_name", "weights"],
+      "derivative_interface": "use pure callables for ChainRules rules",
+      "dependency_chain": "ScoringFunction.score -> score_coordinates",
+      "oracle": "tests/test_full_surface.py::test_public_scoring_function_set_weights_facade",
+      "decision": "implemented facade"
     }
   },
   "upstream_public_api": [
@@ -71,5 +138,5 @@
     {"name":"vina.Vina.optimize","status":"deferred","reason":"iterative optimizer with branch/termination state","primal":"locally minimizes the current pose and returns energies","differentiable_inputs":[],"fixed_inputs":["pose, maps, optimizer tolerances and termination rules"],"derivative_interface":"none","math_convention":"piecewise iterative BFGS state","dependency_chain":"optimize -> vina_wrapper.optimize -> quasi_newton","oracle":"upstream/build/python/vina/vina.py:457-485","decision":"deferred: implicit optimization derivative not specified"},
     {"name":"vina.Vina.dock","status":"not_ad_suitable","reason":"stochastic global search and discrete pose ranking","primal":"runs global docking search and stores ranked poses","differentiable_inputs":[],"fixed_inputs":["seed, exhaustiveness, search heuristics and topology"],"derivative_interface":"none","math_convention":"stochastic/discrete global optimization","dependency_chain":"dock -> vina_wrapper.global_search -> Monte Carlo/search","oracle":"upstream/build/python/vina/vina.py:487-516","decision":"not_ad_suitable: stochastic global search"}
   ],
-  "coverage_totals": {"upstream_public_entries": 19, "implemented_sidecar_callables": 1, "implemented_aliases": 2, "deferred": 6, "not_ad_suitable": 13}
+  "coverage_totals": {"upstream_public_entries": 19, "implemented_sidecar_callables": 4, "implemented_aliases": 4, "deferred": 6, "not_ad_suitable": 13}
 }

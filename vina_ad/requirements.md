@@ -18,7 +18,9 @@
   checkout. It invokes real Vina scoring/one-step optimization plus public
   sidecar `value_and_grad`/`jvp`; unavailable bindings or inputs are explicitly
   reported as deferred.
-- Evidence bindings: implementation `vina_ad/core.py`; public exports
+- Sidecar release: `vina-ad 0.2.0`.
+- Evidence bindings: implementation `vina_ad/core.py` (three scoring families,
+  public term decomposition, and precomputed-term recombination); public exports
   `vina_ad/__init__.py`; workflow `vina_ad/workflow.py`; tests `tests/`;
   command totals and environment are in
   `/root/ad_xjtan_v4pro/tasks/task-1/artifacts/fix_receipt_round1.json`.

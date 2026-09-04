@@ -1,4 +1,4 @@
-# AutoDock-Vina AD sidecar specification (round 2)
+# AutoDock-Vina AD sidecar specification (full scoring surface)
 
 This scope was committed before implementation in commit `0923ce7`; the
 implementation and tests follow in the round-2 fix commit. The reviewed
@@ -12,21 +12,32 @@ implementation was `f00535b` (review round 2).
 - The snapshot's Python binding imports the compiled `vina.vina_wrapper`,
   which is absent from the snapshot. Full `vina.Vina` docking is therefore
   deferred. A labelled toy diagnostic is never used as workflow evidence.
-- The sidecar implements one faithful restricted subset: a fixed pair-list
-  replay of official `SF_VINA`. It requires Cartesian coordinates, X-Score
-  atom types, fixed pair topology, and a torsion count. Atom types, pair
-  topology, and torsion count are fixed state; coordinates and seven public
-  Vina weights are differentiable.
+- The sidecar implements the source-level potential/recombination surface for
+  official `SF_VINA`, `SF_VINARDO`, and `SF_AD42`. Coordinate calls remain a
+  fixed pair-list replay (grid/map values can instead be passed as precomputed
+  potential sums). Vina/Vinardo require X-Score atom types; AD4 requires AD4
+  atom types and accepts PDBQT charges (default zero). Coordinates, weights,
+  and precomputed term vectors have registered derivative rules; atom types,
+  charges, pair topology, and torsion count are fixed state.
 
-## Restricted SF_VINA callable
+## Scoring-family callables
 
 `vina_ad.score_coordinates(coordinates, atom_types, *, pairs=None,
-weights=DEFAULT_VINA_WEIGHTS, torsion_count=0.0)` returns pair energy in
-kcal/mol. `pairs=None` means every `i < j`; otherwise every `(i, j)` is a
-fixed pair. Atom types are integer `XS_TYPE_*` values 0 through 31 from
-`upstream/src/lib/atom_constants.h`.
+weights=None, torsion_count=0.0, sf_name="vina", charges=None)` returns pair
+energy in kcal/mol. `pairs=None` means every `i < j`; otherwise every `(i, j)`
+is a fixed pair. The family selects the source potential set and default
+weight vector. `potential_terms` exposes unweighted potential sums;
+`recombine_terms` applies the complete scorer to six Vina or five Vinardo/AD4
+precomputed terms. `score_terms` exposes one weighted contribution per public
+weight and sums exactly to `score_coordinates`.
 
-For every pair with `r = ||x_i-x_j|| < 20`, let
+Vina weights are `(gaussian1, gaussian2, repulsion, hydrophobic, hydrogen,
+glue, rot)`; Vinardo weights are `(gaussian, repulsion, hydrophobic, hydrogen,
+glue, rot)`; AD4 weights are `(vdw, hydrogen, electrostatic, desolvation,
+glue, rot)`. AD4 uses integer `AD_TYPE_*` values 0 through 30 and per-atom
+charges.
+
+For Vina, every pair with `r = ||x_i-x_j|| < 20`, let
 `d = r - optimal_distance(xs_i,xs_j)` and
 `g(o,w)=exp(-((d-o)/w)**2)`. The six terms are exactly the upstream classes:
 
@@ -39,12 +50,21 @@ For every pair with `r = ||x_i-x_j|| < 20`, let
    acceptor pairs;
 6. `linearattraction(20)` -> `r` only for matching macrocycle glue pairs.
 
-The first six public weights multiply these terms. The seventh is the public
-`weight_rot` from `Vina::set_vina_weights`; after pair sum `E`, Vina's
-`num_tors_div` correction is `E/(1 + weight_rot*torsion_count)`. The mapping is
-sourced to `upstream/src/lib/scoring_function.h:48-59`,
-`upstream/src/lib/potentials.h:134-210,495-514`, and
-`upstream/src/lib/conf_independent.cpp:146-149`.
+Vinardo uses five terms: `vinardo_gaussian(0, 0.8, 8)`,
+`vinardo_repulsion(0, 8)`, `vinardo_hydrophobic(0, 2.5, 8)`,
+`vinardo_non_dir_h_bond(-0.6, 0, 8)`, and the same glue attraction. Its
+optimal distances use `xs_vinardo_vdw_radii`.
+
+AD4 uses `ad4_vdw(0.5, 100000, 8)`, `ad4_hb(0.5, 100000, 8)`,
+`ad4_electrostatic(100, 20.48)`, `ad4_solvation(3.6, 0.01097, true, 20.48)`,
+and glue attraction. AD4 van der Waals and H-bond terms use the tabulated
+AD4 radii/depths and the electrostatic/desolvation terms use atom charges.
+
+The potential weights multiply their terms. Vina/Vinardo then apply
+`E/(1 + weight_rot*torsion_count)`; AD4 adds `weight_rot*torsion_count`. The
+mapping is sourced to `upstream/src/lib/scoring_function.h:48-85`,
+`upstream/src/lib/potentials.h:134-514`, and
+`upstream/src/lib/conf_independent.cpp:146-179`.
 
 JVP/VJP/gradient rules are real-linear in coordinates and weights. Coincident
 radii, the 8/20 A cutoffs, and piecewise knots are reported as
@@ -56,7 +76,7 @@ linearisation, pruned by the requested active inputs.
 
 ## Oracle and workflow
 
-Tests compare independent source-formula transcription to `ScoringFunction`
+Tests compare independent source-formula transcriptions to `ScoringFunction`
 values (absolute error <= `1e-12`) and run a real installed `vina.Vina`
 Python binding on a sourced one-atom receptor/ligand PDBQT pair. The binding
 rounds to three decimals and interpolates maps; that one-atom restricted pair
