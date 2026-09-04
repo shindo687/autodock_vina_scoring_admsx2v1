@@ -36,6 +36,67 @@ def test_family_defaults_and_weighted_term_reconstruction(family, expected):
     assert len(vina_ad.family_term_names(family)) == expected
 
 
+@pytest.mark.parametrize("family, types", [("vina", (0, 3, 8)), ("vinardo", (0, 12, 8))])
+def test_torsioned_score_terms_reconstruct_and_match_registered_rules(family, types):
+    """The post-division term correction remains differentiably consistent."""
+    coords = ((0.0, 0.0, 0.0), (3.1, 0.2, 0.1), (1.0, 4.1, 0.3))
+    kwargs = {"sf_name": family, "torsion_count": 1.3}
+    terms = vina_ad.score_terms(coords, types, **kwargs)
+    score = vina_ad.score_coordinates(coords, types, **kwargs)
+    assert sum(terms) == pytest.approx(score, abs=1e-12)
+
+    coordinate_tangent = ((0.2, -0.1, 0.3), (-0.4, 0.2, 0.1), (0.1, 0.3, -0.2))
+    weight_tangent = tuple(0.07 * (index + 1) for index in range(len(terms)))
+    _, tangent = vina_ad.jvp(
+        vina_ad.score_terms,
+        coords,
+        types,
+        tangents={"coordinates": coordinate_tangent, "weights": weight_tangent},
+        **kwargs,
+    )
+    h = 1e-6
+    plus_coords = tuple(
+        tuple(value + h * direction for value, direction in zip(row, delta))
+        for row, delta in zip(coords, coordinate_tangent)
+    )
+    minus_coords = tuple(
+        tuple(value - h * direction for value, direction in zip(row, delta))
+        for row, delta in zip(coords, coordinate_tangent)
+    )
+    weights = vina_ad.FAMILY_DEFAULT_WEIGHTS[family]
+    plus_weights = tuple(value + h * direction for value, direction in zip(weights, weight_tangent))
+    minus_weights = tuple(value - h * direction for value, direction in zip(weights, weight_tangent))
+    finite = tuple(
+        (plus - minus) / (2.0 * h)
+        for plus, minus in zip(
+            vina_ad.score_terms(plus_coords, types, weights=plus_weights, **kwargs),
+            vina_ad.score_terms(minus_coords, types, weights=minus_weights, **kwargs),
+        )
+    )
+    assert tangent == pytest.approx(finite, abs=2e-7)
+
+    cotangent = tuple(0.2 * (index + 1) for index in range(len(terms)))
+    _, pullback = vina_ad.vjp(
+        vina_ad.score_terms,
+        coords,
+        types,
+        weights=weights,
+        wrt=("coordinates", "weights"),
+        **kwargs,
+    )
+    gradients = pullback(cotangent)
+    dual = sum(
+        gradient * direction
+        for row, tangent_row in zip(gradients["coordinates"], coordinate_tangent)
+        for gradient, direction in zip(row, tangent_row)
+    ) + sum(gradient * direction for gradient, direction in zip(gradients["weights"], weight_tangent))
+    weighted_finite = (
+        sum(cot * plus for cot, plus in zip(cotangent, vina_ad.score_terms(plus_coords, types, weights=plus_weights, **kwargs)))
+        - sum(cot * minus for cot, minus in zip(cotangent, vina_ad.score_terms(minus_coords, types, weights=minus_weights, **kwargs)))
+    ) / (2.0 * h)
+    assert dual == pytest.approx(weighted_finite, abs=2e-7)
+
+
 @pytest.mark.parametrize("family", ["vina", "vinardo", "ad4"])
 def test_recombine_precomputed_terms_matches_coordinate_surface(family):
     coords = ((0.0, 0.0, 0.0), (3.1, 0.2, 0.0))

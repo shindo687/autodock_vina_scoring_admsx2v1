@@ -418,7 +418,14 @@ def _recombine(raw: tuple[float, ...], weights: tuple[float, ...], torsions: flo
             raise ValueError("1 + weight_rot*torsion_count must be positive")
         energy = sum(weights[i] * raw[i] for i in range(n))
         score_value = energy / denominator
-        contributions = tuple(weights[i] * raw[i] / denominator for i in range(n)) + (score_value - energy,)
+        # Keep the public per-term vector an exact decomposition of the
+        # returned score.  The first ``n`` terms are the weighted potentials
+        # after Vina's torsion division; the final term is the remaining
+        # post-division correction (not ``score_value - energy`` from before
+        # the division).
+        contributions = tuple(weights[i] * raw[i] / denominator for i in range(n)) + (
+            score_value - energy / denominator,
+        )
         raw_gradient = tuple(weights[i] / denominator for i in range(n))
         weight_gradient = tuple(raw[i] / denominator for i in range(n)) + (-energy * torsions / (denominator * denominator),)
         return score_value, contributions, raw_gradient, weight_gradient
@@ -739,9 +746,12 @@ def _score_terms_vjp(wrt: tuple[str, ...], coordinates: Any, atom_types: Any = N
         result: dict[str, Any] = {}
         if family in ("vina", "vinardo"):
             denominator = 1.0 + coefficients[-1] * torsions
-            energy_value = sum(coefficients[i] * raw[i] for i in range(len(raw)))
-            numerator = sum(cot[i] * coefficients[i] * raw[i] for i in range(len(raw))) + cot[-1] * energy_value
-            scale = tuple(cot[i] / denominator + cot[-1] * (1.0 / denominator - 1.0) for i in range(len(raw)))
+            numerator = sum(cot[i] * coefficients[i] * raw[i] for i in range(len(raw)))
+            # The final score_terms element is the post-division remainder.
+            # For Vina/Vinardo every potential is divided by the same
+            # denominator, so that remainder is identically zero and its
+            # cotangent must not contribute to the active-input pullback.
+            scale = tuple(cot[i] / denominator for i in range(len(raw)))
             raw_coefficients = tuple(coefficients[i] * scale[i] for i in range(len(raw)))
             weight_gradient = tuple(raw[i] * scale[i] for i in range(len(raw))) + (-numerator * torsions / denominator**2,)
         else:
