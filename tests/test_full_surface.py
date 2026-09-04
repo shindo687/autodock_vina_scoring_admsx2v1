@@ -98,3 +98,15 @@ def test_recombine_accepts_precomputed_interaction_matrix():
     assert vina_ad.recombine_terms(rows, sf_name="vinardo") == pytest.approx(
         vina_ad.recombine_terms(summed, sf_name="vinardo")
     )
+
+
+def test_ad4_cutoff_is_reported_for_coordinate_derivatives():
+    with pytest.raises(vina_ad.NonDifferentiablePoint):
+        vina_ad.grad(
+            vina_ad.score_coordinates,
+            ((0.0, 0.0, 0.0), (8.0, 0.0, 0.0)),
+            (0, 3),
+            sf_name="ad4",
+            charges=(0.2, -0.3),
+            wrt="coordinates",
+        )

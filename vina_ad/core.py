@@ -326,7 +326,7 @@ def _smoothen(radius: float, optimal: float, smoothing: float = 0.5) -> tuple[fl
 
 
 def _ad4_pair_terms(type_i: int, type_j: int, charge_i: float, charge_j: float, radius: float, *, differentiate: bool = False) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    if differentiate and ((_is_glued_ad(type_i, type_j) and math.isclose(radius, 20.0, abs_tol=1e-14, rel_tol=0.0)) or math.isclose(radius, 20.48, abs_tol=1e-14, rel_tol=0.0)):
+    if differentiate and (math.isclose(radius, 8.0, abs_tol=1e-14, rel_tol=0.0) or (_is_glued_ad(type_i, type_j) and math.isclose(radius, 20.0, abs_tol=1e-14, rel_tol=0.0)) or math.isclose(radius, 20.48, abs_tol=1e-14, rel_tol=0.0)):
         raise NonDifferentiablePoint("AD4 potential cutoff is non-differentiable")
     if radius >= 20.48:
         return (0.0,) * 5, (0.0,) * 5
