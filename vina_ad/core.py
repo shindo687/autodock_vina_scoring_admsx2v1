@@ -16,6 +16,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from numbers import Integral
 from typing import Any
 
 from .protocol import NonDifferentiablePoint, UnsupportedWrt, ZERO, rules
@@ -131,8 +132,9 @@ def _integer_types(values: Any, n_atoms: int, *, family: str) -> tuple[int, ...]
         raise ValueError("atom_types must have one atom type per atom")
     result = []
     for value in raw:
-        if isinstance(value, bool) or not isinstance(value, int):
+        if isinstance(value, bool) or not isinstance(value, Integral):
             raise TypeError("atom_types must contain integer atom type values")
+        value = int(value)
         if value < 0 or value >= limit:
             raise ValueError(f"atom type must be in [0, {limit}) for {family}")
         result.append(value)
@@ -180,9 +182,9 @@ def _pairs(pairs: Any, n_atoms: int) -> tuple[tuple[int, int], ...]:
             values = list(pair)
         except TypeError as exc:
             raise TypeError("each pair must contain two atom indices") from exc
-        if len(values) != 2 or any(isinstance(v, bool) or not isinstance(v, int) for v in values):
+        if len(values) != 2 or any(isinstance(v, bool) or not isinstance(v, Integral) for v in values):
             raise TypeError("each pair must contain two atom indices")
-        i, j = values
+        i, j = (int(values[0]), int(values[1]))
         if i < 0 or j < 0 or i >= n_atoms or j >= n_atoms or i == j:
             raise ValueError("pair indices must be distinct and in range")
         result.append((i, j))
